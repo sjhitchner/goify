@@ -1,93 +1,51 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
-	//"io/ioutil"
 	"os"
-	"reflect"
-	"strings"
+	"time"
 )
 
 var (
-	fileIn string
-	name   string
+	fileIn     string
+	fileOut    string
+	name       string
+	dateFormat string
 )
 
 func init() {
 	flag.StringVar(&name, "name", "Unknown", "Name of type")
 	flag.StringVar(&fileIn, "in", "", "Input file")
+	flag.StringVar(&fileOut, "out", "", "Output file")
+	flag.StringVar(&dateFormat, "date", time.RFC3339, "Preferred date format")
 }
 
 func main() {
 	flag.Parse()
 
+	_, err := time.Parse(dateFormat, time.Now().Format(dateFormat))
+	if err != nil {
+		ExitOnError(err)
+	}
+
 	reader, err := GetReader(fileIn)
 	if err != nil {
-		fmt.Println(err)
-		return
+		ExitOnError(err)
 	}
 
-	fmt.Println(Goify(reader))
+	b, err := Goify(reader, name, "test")
+	if err != nil {
+		ExitOnError(err)
+	}
+
+	fmt.Println(string(b))
 }
 
-// func Goify(reader io.Reader) error {
-// 	var m map[string]interface{}
-//
-// 	dec := json.NewDecoder(reader)
-// 	if err := dec.Decode(&m); err != nil {
-// 		return fmt.Errorf("Invalid JSON %v", err)
-// 	}
-//
-// 	for k, v := range m {
-// 		typ := reflect.TypeOf(v)
-//
-// 		value := reflect.New(typ)
-//         value.
-// 		// switch typ {
-// 		// case reflect.Map:
-// 		// 	fmt.Printf("%s struct {\n", strings.Replace(strings.Title(k), "_", "", 10))
-// 		// 	goify(v.(map[string]interface{}))
-// 		// 	fmt.Printf("} `json:\"%s\"`\n", k)
-// 		// default:
-// 		// 	fmt.Printf("%s %s `json:\"%s\"`\n", strings.Replace(strings.Title(k), "_", "", 10), typ, k)
-// 		// }
-// 	}
-// }
-
-func Goify(reader io.Reader) error {
-	var m map[string]interface{}
-
-	dec := json.NewDecoder(reader)
-	if err := dec.Decode(&m); err != nil {
-		return fmt.Errorf("Invalid JSON %v", err)
-	}
-
-	fmt.Printf("type %s struct {\n", name)
-	goify(m)
-	fmt.Printf("}\n")
-
-	return nil
-}
-
-func goify(m map[string]interface{}) {
-
-	for k, v := range m {
-		typ := reflect.TypeOf(v).Kind()
-		switch typ {
-		case reflect.Map:
-			fmt.Printf("%s struct {\n", strings.Title(strings.Replace(k, "_", "", 10)))
-			goify(v.(map[string]interface{}))
-			fmt.Printf("} `json:\"%s\"`\n", k)
-		case reflect.Slice:
-			fmt.Println("====>", reflect.ValueOf(v))
-			fmt.Printf("%s []%s `json:\"%s\"`\n", strings.Title(strings.Replace(k, "_", "", 10)), typ, k)
-		default:
-			fmt.Printf("%s %s `json:\"%s\"`\n", strings.Title(strings.Replace(k, "_", "", 10)), typ, k)
-		}
-	}
+func ExitOnError(err error) {
+	fmt.Println(err)
+	os.Exit(-1)
 }
 
 func GetReader(fileIn string) (io.ReadCloser, error) {
@@ -95,4 +53,11 @@ func GetReader(fileIn string) (io.ReadCloser, error) {
 		return os.Stdin, nil
 	}
 	return os.Open(fileIn)
+}
+
+func GetWriter(fileOut string) (io.WriteCloser, error) {
+	if fileOut == "" {
+		return os.Stdout, nil
+	}
+	return os.Create(fileOut)
 }
