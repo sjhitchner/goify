@@ -117,7 +117,6 @@ func generateStruct(buf *bytes.Buffer, m map[string]interface{}, depth int) erro
 			if err := generateStruct(buf, vt, depth+1); err != nil {
 				return err
 			}
-
 		case []interface{}:
 			if len(vt) > 0 {
 				buf.WriteString("[]")
@@ -133,21 +132,6 @@ func generateStruct(buf *bytes.Buffer, m map[string]interface{}, depth int) erro
 			} else {
 				buf.WriteString("[]interface{}")
 			}
-
-			/*
-				case []map[string]interface{}:
-					log.Println("[]map[string]interface{}")
-
-					buf.WriteString("[]struct {\n")
-					if len(vt) > 0 {
-						if err := generateStruct(buf, vt[0], depth+1); err != nil {
-							return err
-						}
-					} else {
-						return fmt.Errorf("empty json array")
-					}
-					buf.WriteString("}")
-			*/
 		default:
 			buf.WriteString(getTypeForValue(vt))
 		}
