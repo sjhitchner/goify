@@ -1,12 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	//	"go/ast"
-	//	"go/parser"
-	//	"go/token"
-	"bytes"
+	"go/format"
 	"io"
 	"log"
 	"reflect"
@@ -48,6 +46,10 @@ type {{.Name}} struct {
 const SLICE = "{{.Name}} []{{.Type}} `json:\"{{.JSON}}\"`"
 const PRIMATIVE = "{{.Name}} {{.Type}} `json:\"{{.JSON}}\"`"
 
+const (
+	INDENT = "\t"
+)
+
 var m map[string]interface{}
 
 func Goify(reader io.Reader, structName string, packageName string) ([]byte, error) {
@@ -60,37 +62,44 @@ func Goify(reader io.Reader, structName string, packageName string) ([]byte, err
 	}
 
 	fmt.Fprintf(buf, "package %s\n", packageName)
-	fmt.Fprintf(buf, "type %s", structName)
+	fmt.Fprintf(buf, "type %s ", structName)
 
 	if err := generate(buf, m); err != nil {
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	return format.Source(buf.Bytes())
 }
 
 func generate(buf *bytes.Buffer, m interface{}) error {
 
 	switch mt := m.(type) {
 	case map[string]interface{}:
-		return generateStruct(buf, mt, 0)
+		return generateStruct(buf, mt, 1)
 
-	case []map[string]interface{}:
+	case []interface{}:
 		if len(mt) > 0 {
-			return generateStruct(buf, mt[0], 0)
+			buf.WriteString(" []")
+			switch mtt := mt[0].(type) {
+			case map[string]interface{}:
+				return generateStruct(buf, mtt, 1)
+			default:
+				buf.WriteString(getTypeForValue(mtt))
+				return nil
+			}
 		}
 		return fmt.Errorf("json array is empty")
 
-	case []interface{}:
-		return fmt.Errorf("json array not implemented")
-
 	default:
-		return fmt.Errorf("invalid type: %T", mt)
+		buf.WriteString(getTypeForValue(m))
 	}
+
+	return nil
 }
 
 func generateStruct(buf *bytes.Buffer, m map[string]interface{}, depth int) error {
+	buf.WriteString("struct {\n")
 
-	keys := make([]string, 0)
+	keys := make([]string, 0, len(m))
 	for key, _ := range m {
 		keys = append(keys, key)
 	}
@@ -99,50 +108,53 @@ func generateStruct(buf *bytes.Buffer, m map[string]interface{}, depth int) erro
 	for _, key := range keys {
 		value := m[key]
 
-		buf.WriteString(strings.Repeat("  ", depth))
+		buf.WriteString(strings.Repeat(INDENT, depth))
 		buf.WriteString(jsonToGoName(key))
 		buf.WriteString(" ")
 
 		switch vt := value.(type) {
-		case []map[string]interface{}:
-			log.Println("[]map[string]interface{}")
-
-			buf.WriteString("[]struct {\n")
-			if len(vt) > 0 {
-				if err := generateStruct(buf, vt[0], depth+1); err != nil {
-					return err
-				}
-			} else {
-				return fmt.Errorf("empty json array")
-			}
-			buf.WriteString("}")
-
 		case map[string]interface{}:
-			log.Println("map[string]interface{}")
-
-			buf.WriteString("struct {\n")
 			if err := generateStruct(buf, vt, depth+1); err != nil {
 				return err
 			}
-			buf.WriteString("}")
 
 		case []interface{}:
-			log.Println("[]interface{}")
-
 			if len(vt) > 0 {
 				buf.WriteString("[]")
-				buf.WriteString(getTypeForValue(vt[0]))
+				switch vtt := vt[0].(type) {
+				case map[string]interface{}:
+					if err := generateStruct(buf, vtt, depth+1); err != nil {
+						return err
+					}
+				default:
+					buf.WriteString(getTypeForValue(vtt))
+				}
+
 			} else {
 				buf.WriteString("[]interface{}")
 			}
 
+			/*
+				case []map[string]interface{}:
+					log.Println("[]map[string]interface{}")
+
+					buf.WriteString("[]struct {\n")
+					if len(vt) > 0 {
+						if err := generateStruct(buf, vt[0], depth+1); err != nil {
+							return err
+						}
+					} else {
+						return fmt.Errorf("empty json array")
+					}
+					buf.WriteString("}")
+			*/
 		default:
 			buf.WriteString(getTypeForValue(vt))
 		}
-
 		fmt.Fprintf(buf, " `json:\"%s\"`\n", key)
 	}
-
+	buf.WriteString(strings.Repeat(INDENT, depth-1))
+	buf.WriteString("}")
 	return nil
 }
 
@@ -175,8 +187,8 @@ func getTypeForValue(value interface{}) string {
 	case bool:
 		return "bool"
 	default:
-		fmt.Println(reflect.TypeOf(value).Elem(), reflect.TypeOf(value).Name())
-		return "Xinterface{}"
+		log.Println(reflect.TypeOf(value).Elem(), reflect.TypeOf(value).Name())
+		return "#interface{}"
 	}
 }
 
