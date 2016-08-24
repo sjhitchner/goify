@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"go/format"
 	"io"
-	"log"
 	"reflect"
 	"sort"
 	"strings"
@@ -58,16 +58,24 @@ func Goify(reader io.Reader, structName string, packageName string) ([]byte, err
 	var m interface{}
 	dec := json.NewDecoder(reader)
 	if err := dec.Decode(&m); err != nil {
-		return nil, fmt.Errorf("Invalid JSON %v", err)
+		return nil, errors.Wrapf(err, "Invalid JSON")
 	}
 
 	fmt.Fprintf(buf, "package %s\n", packageName)
 	fmt.Fprintf(buf, "type %s ", structName)
 
 	if err := generate(buf, m); err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "error generating go struct")
 	}
-	return format.Source(buf.Bytes())
+
+	fmt.Println(string(buf.Bytes()))
+
+	b, err := format.Source(buf.Bytes())
+	if err != nil {
+		return nil, errors.Wrap(err, "error sourcing go struct")
+	}
+
+	return b, nil
 }
 
 func generate(buf *bytes.Buffer, m interface{}) error {
@@ -144,7 +152,7 @@ func generateStruct(buf *bytes.Buffer, m map[string]interface{}, depth int) erro
 
 func jsonToGoName(key string) string {
 	// TODO use replacer
-	ss := strings.Split(key, "_")
+	ss := strings.Split(strings.Replace(key, "-", "_", 10), "_")
 	return strings.Join(MapStringSlice(ss, strings.Title), "")
 }
 
@@ -171,8 +179,8 @@ func getTypeForValue(value interface{}) string {
 	case bool:
 		return "bool"
 	default:
-		log.Println(reflect.TypeOf(value).Elem(), reflect.TypeOf(value).Name())
-		return "#interface{}"
+		//fmt.Println(reflect.TypeOf(value).Elem(), reflect.TypeOf(value).Name())
+		return "interface{}"
 	}
 }
 
